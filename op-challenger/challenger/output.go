@@ -1,0 +1,44 @@
+package challenger
+
+import (
+	"context"
+	"errors"
+	"math/big"
+
+	"github.com/ethereum-optimism/optimism/op-node/eth"
+)
+
+var (
+	// supportedL2OutputVersion is the version of the L2 output that the challenger supports.
+	supportedL2OutputVersion = eth.Bytes32{}
+	// ErrInvalidBlockNumber is returned when the block number of the output does not match the expected block number.
+	ErrInvalidBlockNumber = errors.New("invalid block number")
+	// ErrUnsupportedL2OOVersion is returned when the output version is not supported.
+	ErrUnsupportedL2OOVersion = errors.New("unsupported l2oo version")
+)
+
+// ValidateOutput checks that a given output is expected via a trusted rollup node rpc.
+// It returns: if the output is correct, error
+func (c *Challenger) ValidateOutput(ctx context.Context, l2BlockNumber *big.Int, expected eth.Bytes32) (bool, *eth.Bytes32, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.networkTimeout)
+	defer cancel()
+	output, err := c.rollupClient.OutputAtBlock(ctx, l2BlockNumber.Uint64())
+	if err != nil {
+		c.log.Error("Failed to fetch output", "blockNum", l2BlockNumber, "err", err)
+		return false, nil, err
+	}
+	if output.Version != supportedL2OutputVersion {
+		c.log.Error("Unsupported l2 output version", "version", output.Version)
+		return false, nil, ErrUnsupportedL2OOVersion
+	}
+	// If the block numbers don't match, we should try to fetch the output again
+	if output.BlockRef.Number != l2BlockNumber.Uint64() {
+		c.log.Error("Invalid blockNumber", "expected", l2BlockNumber, "actual", output.BlockRef.Number)
+		return false, nil, ErrInvalidBlockNumber
+	}
+	equalRoots := output.OutputRoot == expected
+	if equalRoots {
+		c.metr.RecordValidOutput(output.BlockRef)
+	}
+	return equalRoots, &output.OutputRoot, nil
+}
