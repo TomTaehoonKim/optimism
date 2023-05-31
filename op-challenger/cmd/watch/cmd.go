@@ -29,7 +29,18 @@ var Subcommands = cli.Commands{
 		Name:  "factory",
 		Usage: "Watches the DisputeGameFactory for new dispute games",
 		Action: func(ctx *cli.Context) error {
-			panic("factory not implemented")
+			logger, err := config.LoggerFromCLI(ctx)
+			if err != nil {
+				return err
+			}
+			logger.Info("Listening for new dispute games")
+
+			cfg, err := config.NewConfigFromCLI(ctx)
+			if err != nil {
+				return err
+			}
+
+			return Factory(logger, cfg)
 		},
 	},
 }
